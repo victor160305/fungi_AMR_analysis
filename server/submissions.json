@@ -1,0 +1,45 @@
+{
+  "5E7265C4": {
+    "id": "5E7265C4",
+    "originalName": "114-2èª²è¡¨.xlsx",
+    "status": "分析完成",
+    "timestamp": "2026-02-09T08:31:34.127Z",
+    "result": "真菌抗藥性比對完成：此樣本序列中發現 FKS1 基因突變，可能具備棘白菌素 (Echinocandins) 抗藥性。"
+  },
+  "FG-20260209-163806-JW1N": {
+    "id": "FG-20260209-163806-JW1N",
+    "originalName": "114-2èª²è¡¨.xlsx",
+    "folderName": "FG-20260209-163806-JW1N",
+    "filePath": "C:\\victor\\課程\\生技所\\Aspergillus fumigatus\\fungi-analysis-tool\\server\\uploads\\FG-20260209-163806-JW1N\\114-2èª²è¡¨.xlsx",
+    "status": "分析完成",
+    "timestamp": "2026-02-09T08:38:06.674Z",
+    "result": "檔案 114-2èª²è¡¨.xlsx 已成功儲存於資料夾 FG-20260209-163806-JW1N。"
+  },
+  "FG-20260212-143923-VEM1": {
+    "id": "FG-20260212-143923-VEM1",
+    "originalName": "GCA_000150145.1_ASM15014v1_genomic.fna",
+    "folderName": "FG-20260212-143923-VEM1",
+    "filePath": "C:\\victor\\課程\\生技所\\Aspergillus fumigatus\\fungi-analysis-tool\\server\\uploads\\FG-20260212-143923-VEM1\\GCA_000150145.1_ASM15014v1_genomic.fna",
+    "status": "分析完成",
+    "timestamp": "2026-02-12T06:39:23.372Z",
+    "result": "檔案 GCA_000150145.1_ASM15014v1_genomic.fna 已成功儲存於資料夾 FG-20260212-143923-VEM1。"
+  },
+  "FG-20260212-150801-090M": {
+    "id": "FG-20260212-150801-090M",
+    "originalName": "GCA_000150145.1_ASM15014v1_genomic.fna",
+    "folderName": "FG-20260212-150801-090M",
+    "filePath": "C:\\victor\\課程\\生技所\\Aspergillus fumigatus\\fungi-analysis-tool\\server\\uploads\\FG-20260212-150801-090M\\GCA_000150145.1_ASM15014v1_genomic.fna",
+    "status": "分析完成",
+    "timestamp": "2026-02-12T07:08:01.704Z",
+    "result": "檔案 GCA_000150145.1_ASM15014v1_genomic.fna 已成功儲存於資料夾 FG-20260212-150801-090M。"
+  },
+  "FG-20261007-104831-Y6KP": {
+    "id": "FG-20261007-104831-Y6KP",
+    "originalName": "A44_assembly.fasta",
+    "folderName": "FG-20261007-104831-Y6KP",
+    "filePath": "C:\\victor\\課程\\生技所\\Aspergillus fumigatus\\程式碼\\fungi-analysis-tool\\server\\uploads\\FG-20261007-104831-Y6KP\\A44_assembly.fasta",
+    "status": "分析完成",
+    "timestamp": "2026-10-07T02:48:31.535Z",
+    "result": "檔案 A44_assembly.fasta 已成功儲存於資料夾 FG-20261007-104831-Y6KP。"
+  }
+}

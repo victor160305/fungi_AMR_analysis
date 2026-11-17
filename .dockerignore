@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.env
+nas-data
+server/node_modules
+server/uploads
+server/data_files
+server/submissions.json
