@@ -1058,8 +1058,13 @@ function App() {
   const [matrixLoading, setMatrixLoading] = useState(false);
   const [matrixLoadError, setMatrixLoadError] = useState(null);
 
-  // BioSample 365 株資料狀態
+  // BioSample 資料狀態
   const [biosamples, setBiosamples] = useState([]);
+  const staticStats = useMemo(() => ({
+    speciesCount: new Set(biosamples.map((sample) => sample.Organism?.trim()).filter(Boolean)).size,
+    sampleCount: biosamples.length,
+  }), [biosamples]);
+  const displayedStats = stats.sampleCount > 0 ? stats : staticStats;
 
   // 參考序列過濾與統計面板展開狀態
   const [selectedReference, setSelectedReference] = useState('');
@@ -2050,12 +2055,12 @@ function App() {
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center">
               <span className="text-5xl mb-4">🍄</span>
               <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">收入菌種種類</p>
-              <p className="text-6xl font-black text-indigo-600 mt-4">{stats.speciesCount}</p>
+              <p className="text-6xl font-black text-indigo-600 mt-4">{displayedStats.speciesCount}</p>
             </div>
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center">
               <span className="text-5xl mb-4">📊</span>
               <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">樣本總量</p>
-              <p className="text-6xl font-black text-emerald-500 mt-4">{stats.sampleCount}</p>
+              <p className="text-6xl font-black text-emerald-500 mt-4">{displayedStats.sampleCount}</p>
             </div>
           </div>
         </div>
