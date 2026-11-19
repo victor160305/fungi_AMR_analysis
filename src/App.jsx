@@ -1684,9 +1684,7 @@ function App() {
             <div>
               <p className="text-sm text-gray-500">Query</p>
               <p className="font-mono text-xl font-black text-gray-800">{searchData.id}</p>
-              {searchData.id === DEMO_QUERY_DATA.id && (
-                <p className="mt-1 text-xs font-semibold text-indigo-600">靜態示範資料，可直接瀏覽，不需連線到後端。</p>
-              )}
+              {searchData.id === DEMO_QUERY_DATA.id}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -2104,11 +2102,7 @@ function App() {
           </div>
           <div className="mt-8 flex flex-col gap-4 rounded-3xl border border-indigo-100 bg-indigo-50 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-700">靜態範例</p>
               <h3 className="mt-1 font-bold text-gray-800">{DEMO_QUERY_DATA.id}</h3>
-              <p className="mt-1 text-sm text-gray-600">
-                瀏覽 {DEMO_QUERY_DATA.resistanceRecords.length} 筆抗藥性分析結果，不需連線到後端。
-              </p>
             </div>
             <button
               type="button"
