@@ -1022,12 +1022,13 @@ const mutationGlobModules = import.meta.glob(
 );
 
 const PUBLIC_DATASET_STATS = { speciesCount: 1, sampleCount: 365 };
+const DEFAULT_SPECIES_OPTIONS = ['Aspergillus fumigatus'];
 
 function App() {
   const [page, setPage] = useState('home');
   const [stats, setStats] = useState({ speciesCount: 0, sampleCount: 0 });
   const [uploadId, setUploadId] = useState('');
-  const [speciesOptions, setSpeciesOptions] = useState([]);
+  const [speciesOptions, setSpeciesOptions] = useState(DEFAULT_SPECIES_OPTIONS);
   const [uploadNotice, setUploadNotice] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -1170,7 +1171,20 @@ function App() {
 
   useEffect(() => { fetchStats(); }, [page]);
   useEffect(() => {
-    fetch('/api/species').then((res) => res.json()).then((data) => setSpeciesOptions(data.species || [])).catch((err) => console.error('無法讀取物種清單:', err));
+    fetch('/api/species')
+      .then((res) => {
+        if (!res.ok) throw new Error(`無法讀取物種清單 (${res.status})`);
+        return res.json();
+      })
+      .then((data) => {
+        const apiSpecies = Array.isArray(data?.species)
+          ? data.species.filter((species) => typeof species === 'string' && species.trim()).map((species) => species.trim())
+          : [];
+        if (apiSpecies.length > 0) {
+          setSpeciesOptions([...new Set([...DEFAULT_SPECIES_OPTIONS, ...apiSpecies])]);
+        }
+      })
+      .catch((err) => console.warn('無法讀取物種清單，使用內建菌種清單:', err));
   }, []);
 
   // 深入解析各個 Reference 的突變點位清單與數量統計
@@ -1609,7 +1623,7 @@ function App() {
         setResultTab('overview');
         setPage('result');
       } else {
-        alert('找不到此序號，格式範例：FG-YYYYMMDD-HHMMSS-XXXX');
+        alert('找不到此序號，請確認格式：FG-YYYYMMDD-HHMMSS-XXXX');
       }
     } catch (err) {
       alert('查詢發生錯誤');
@@ -1684,7 +1698,6 @@ function App() {
             <div>
               <p className="text-sm text-gray-500">Query</p>
               <p className="font-mono text-xl font-black text-gray-800">{searchData.id}</p>
-              {searchData.id === DEMO_QUERY_DATA.id}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -2102,14 +2115,18 @@ function App() {
           </div>
           <div className="mt-8 flex flex-col gap-4 rounded-3xl border border-indigo-100 bg-indigo-50 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-700">分析批次</p>
               <h3 className="mt-1 font-bold text-gray-800">{DEMO_QUERY_DATA.id}</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                查看此批次的抗藥性分析結果。
+              </p>
             </div>
             <button
               type="button"
               onClick={openDemoResult}
               className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-indigo-700"
             >
-              查看範例分析
+              查看分析結果
             </button>
           </div>
         </div>
