@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import Layout from './components/Layout';
+import DEMO_QUERY_DATA from './data/demoAnalysis.json';
 
 const RESULT_TABS = [
   { key: 'overview', label: '總覽' },
@@ -1020,23 +1021,7 @@ const mutationGlobModules = import.meta.glob(
   { query: '?raw', import: 'default' }
 );
 
-const DEMO_QUERY_DATA = {
-  id: "FG-20261007-104831-Y6KP (示範樣本)",
-  status: "分析完成",
-  timestamp: new Date().toISOString(),
-  resistanceRecords: [
-    {
-      sampleName: "A44_assembly",
-      gene: "Cyp51A",
-      reference: "Q9P8R0",
-      mutationCombination: "TR34/L98H/S297T/F495I",
-      mutationSite: "L98H, S297T, F495I",
-      mutationSites: ["L98H", "S297T", "F495I"],
-      resistantDrugs: ["Itraconazole", "Voriconazole", "Posaconazole"],
-    }
-  ],
-  fileList: ["A44_assembly_resistance_report.tsv"]
-};
+const PUBLIC_DATASET_STATS = { speciesCount: 1, sampleCount: 365 };
 
 function App() {
   const [page, setPage] = useState('home');
@@ -1060,11 +1045,7 @@ function App() {
 
   // BioSample 資料狀態
   const [biosamples, setBiosamples] = useState([]);
-  const staticStats = useMemo(() => ({
-    speciesCount: new Set(biosamples.map((sample) => sample.Organism?.trim()).filter(Boolean)).size,
-    sampleCount: biosamples.length,
-  }), [biosamples]);
-  const displayedStats = stats.sampleCount > 0 ? stats : staticStats;
+  const displayedStats = stats.sampleCount > 0 ? stats : PUBLIC_DATASET_STATS;
 
   // 參考序列過濾與統計面板展開狀態
   const [selectedReference, setSelectedReference] = useState('');
@@ -1298,6 +1279,13 @@ function App() {
       return drugsA.localeCompare(drugsB, 'en', { numeric: true, sensitivity: 'base' });
     });
   }, [searchData?.resistanceRecords]);
+
+  const otherResistanceRecords = useMemo(
+    () => (searchData?.resistanceRecords || []).filter(
+      (record) => normalizeGeneName(record.gene) !== 'Cyp51A'
+    ),
+    [searchData?.resistanceRecords]
+  );
 
   const queryRows = useMemo(() => {
     if (!searchData) return [];
@@ -1597,10 +1585,23 @@ function App() {
     }
   };
 
+  const openDemoResult = () => {
+    setSearchData(DEMO_QUERY_DATA);
+    setSelectedFile(null);
+    setResultTab('overview');
+    setPage('result');
+  };
+
   const handleSearch = async () => {
-    if (!searchInput) return;
+    const query = searchInput.trim();
+    if (!query) return;
+    if (query.toUpperCase() === DEMO_QUERY_DATA.id.toUpperCase()) {
+      openDemoResult();
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/query/${encodeURIComponent(searchInput)}`);
+      const res = await fetch(`/api/query/${encodeURIComponent(query)}`);
       const data = await res.json();
       if (data.success) {
         setSearchData(data.data);
@@ -1683,6 +1684,9 @@ function App() {
             <div>
               <p className="text-sm text-gray-500">Query</p>
               <p className="font-mono text-xl font-black text-gray-800">{searchData.id}</p>
+              {searchData.id === DEMO_QUERY_DATA.id && (
+                <p className="mt-1 text-xs font-semibold text-indigo-600">靜態示範資料，可直接瀏覽，不需連線到後端。</p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -1761,6 +1765,41 @@ function App() {
                     </table>
                   </div>
                 </section>
+
+                {otherResistanceRecords.length > 0 && (
+                  <section>
+                    <div className="mb-3">
+                      <h3 className="text-lg font-bold text-gray-800">其他基因分析結果</h3>
+                      <p className="mt-1 text-sm text-gray-500">{otherResistanceRecords.length} 筆報告資料</p>
+                    </div>
+                    <div className="overflow-x-auto border-y border-gray-200">
+                      <table className="w-full min-w-[900px] border-collapse text-sm">
+                        <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-600">
+                          <tr>
+                            <th className="border-b border-gray-200 px-3 py-3">Gene_Name</th>
+                            <th className="border-b border-gray-200 px-3 py-3">Reference_Sequence</th>
+                            <th className="border-b border-gray-200 px-3 py-3">Mutation_Site</th>
+                            <th className="border-b border-gray-200 px-3 py-3">Confidence_Score</th>
+                            <th className="border-b border-gray-200 px-3 py-3">Resistant_Drugs</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {otherResistanceRecords.map((record, index) => (
+                            <tr key={`${record.gene}-${record.reference}-${index}`} className="align-top even:bg-gray-50/60">
+                              <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-800">{record.gene || '—'}</td>
+                              <td className="border-b border-gray-100 px-3 py-3 font-mono text-gray-700">{record.reference || '—'}</td>
+                              <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.mutationSite || 'None'}</td>
+                              <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.confidenceScore ?? '—'}</td>
+                              <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
+                                {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
               </div>
             )}
 
@@ -2054,14 +2093,30 @@ function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center">
               <span className="text-5xl mb-4">🍄</span>
-              <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">收入菌種種類</p>
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">Organism 種類</p>
               <p className="text-6xl font-black text-indigo-600 mt-4">{displayedStats.speciesCount}</p>
             </div>
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center">
               <span className="text-5xl mb-4">📊</span>
-              <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">樣本總量</p>
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-sm">菌株總量</p>
               <p className="text-6xl font-black text-emerald-500 mt-4">{displayedStats.sampleCount}</p>
             </div>
+          </div>
+          <div className="mt-8 flex flex-col gap-4 rounded-3xl border border-indigo-100 bg-indigo-50 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-indigo-700">靜態範例</p>
+              <h3 className="mt-1 font-bold text-gray-800">{DEMO_QUERY_DATA.id}</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                瀏覽 {DEMO_QUERY_DATA.resistanceRecords.length} 筆抗藥性分析結果，不需連線到後端。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openDemoResult}
+              className="shrink-0 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              查看範例分析
+            </button>
           </div>
         </div>
       )}
