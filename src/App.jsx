@@ -1086,13 +1086,6 @@ function App() {
       });
   }, []);
 
-    useEffect(() => {
-    fetch('./mutation_map.json')
-      .then((res) => res.json())
-      .then(setMutationMapRecords)
-      .catch((err) => console.warn('讀取 mutation_map.json 略過:', err));
-  }, []);
-
   // 2. 自動尋找最新矩陣檔案
   const loadLatestMatrix = async () => {
     setMatrixLoading(true);
