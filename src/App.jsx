@@ -131,6 +131,38 @@ const formatMutationDisplay = (value) => {
   if (typeof value !== 'string') return value;
 
   const parts = value.split(/([,，、;；])/);
+  const deletionTokens = parts
+    .filter((_, index) => index % 2 === 0)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const deletionMatches = deletionTokens.map((token) => token.match(/^([A-Za-z])(\d+)(?:-|del)$/i));
+
+  if (
+    deletionTokens.length > 1 &&
+    deletionMatches.every(Boolean) &&
+    new Set(deletionMatches.map((match) => Number(match[2]))).size === deletionMatches.length
+  ) {
+    const sortedDeletions = deletionMatches
+      .map((match) => ({ aminoAcid: match[1], position: Number(match[2]) }))
+      .sort((a, b) => a.position - b.position);
+    const groups = [];
+
+    sortedDeletions.forEach((deletion) => {
+      const currentGroup = groups[groups.length - 1];
+      if (currentGroup && deletion.position === currentGroup.end + 1) {
+        currentGroup.end = deletion.position;
+      } else {
+        groups.push({ start: deletion.position, end: deletion.position, aminoAcid: deletion.aminoAcid });
+      }
+    });
+
+    return groups
+      .map(({ start, end, aminoAcid }) => (
+        start === end ? `${aminoAcid}${start}del` : `${start}_${end}del`
+      ))
+      .join(', ');
+  }
+
   const formattedParts = [];
   for (let i = 0; i < parts.length; i += 1) {
     if (i % 2 === 1) {
