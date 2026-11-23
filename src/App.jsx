@@ -210,10 +210,28 @@ const formatMutationDisplay = (value) => {
   return formattedParts.join('');
 };
 
-// 判斷是否為 TR34
-const isTR34 = (mutation) => {
-  const norm = normalizeMutation(mutation).toLowerCase();
-  return /^tr34/i.test(norm) || norm.includes('tr34');
+const normalizeSupportedTandemRepeat = (mutation) => {
+  const match = normalizeMutation(mutation).match(/^TR(34|46)(?:\(x\d+\))?$/i);
+  return match ? `TR${match[1]}` : null;
+};
+
+const isUnsupportedTandemRepeat = (mutation) => (
+  /^TR/i.test(normalizeMutation(mutation)) && !normalizeSupportedTandemRepeat(mutation)
+);
+
+const getTandemRepeatsFromCombination = (mutationCombination) => (
+  [...new Set(
+    (mutationCombination || '')
+      .split(/[,，、;；\s]+/)
+      .map(normalizeSupportedTandemRepeat)
+      .filter(Boolean)
+  )]
+);
+
+const rowHasMutationColumn = (row, column) => {
+  if (!row.mutations) return false;
+  return [column.id, column.rawKey, ...(column.rawKeys || []), column.mutation]
+    .some((key) => row.mutations.has(key));
 };
 
 // 取出突變中的點位數字進行精確排序
@@ -302,41 +320,47 @@ const parseMutationHeader = (rawKey) => {
   return { gene: 'Unknown', mutation: trimmed, reference: '' };
 };
 
-// 建立 Cyp51A 突變欄位（過濾 TR34、僅保留 Cyp51A、依點位編號數字排序）
+// 建立 Cyp51A 突變欄位（僅保留 TR34/TR46、依點位編號數字排序）
 const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetReference = '') => {
   const columns = [];
-  const seenCanonicalKeys = new Set(); // 統一去重 Key 集合
+  const columnsByCanonicalKey = new Map();
 
   // A. 處理資料庫矩陣欄位
   dbMutationKeys.forEach((rawKey) => {
     if (!rawKey) return;
-    const { gene, mutation, reference } = parseMutationHeader(rawKey);
+    const { gene, mutation: parsedMutation, reference } = parseMutationHeader(rawKey);
 
     // 嚴格篩選：只保留 Cyp51A
     if (gene !== 'Cyp51A') return;
-    // 嚴格過濾 TR34（包含 TR34(x3)）
-    if (isTR34(mutation)) return;
+    if (isUnsupportedTandemRepeat(parsedMutation)) return;
 
     // 參考序列過濾
     if (targetReference && reference && reference !== targetReference) {
       return;
     }
 
+    const mutation = normalizeSupportedTandemRepeat(parsedMutation) || parsedMutation;
     // 統一規範化鍵名：例如 "Cyp51A::Q9P8R0::L98H"
     const canonicalKey = `${gene}::${reference || 'Unknown'}::${mutation.toUpperCase()}`;
-    if (seenCanonicalKeys.has(canonicalKey)) return;
-    seenCanonicalKeys.add(canonicalKey);
+    const existingColumn = columnsByCanonicalKey.get(canonicalKey);
+    if (existingColumn) {
+      existingColumn.rawKeys.push(rawKey);
+      return;
+    }
 
-    columns.push({
+    const column = {
       id: rawKey,
       rawKey,
+      rawKeys: [rawKey],
       canonicalKey,
       gene,
       geneLabel: reference ? `${gene} (${reference})` : gene,
       reference,
       mutation,
       orderValue: getMutationOrderValue(mutation),
-    });
+    };
+    columns.push(column);
+    columnsByCanonicalKey.set(canonicalKey, column);
   });
 
   // B. 處理使用者本次報告欄位
@@ -349,25 +373,31 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       return;
     }
 
-    (record.mutationSites || []).forEach((mutation) => {
-      const normalizedMut = normalizeMutation(mutation);
-      if (!normalizedMut || isTR34(normalizedMut)) return;
+    const recordMutations = [
+      ...(record.mutationSites || []),
+      ...getTandemRepeatsFromCombination(record.mutationCombination),
+    ];
+    recordMutations.forEach((mutation) => {
+      const normalizedMut = normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation);
+      if (!normalizedMut || isUnsupportedTandemRepeat(normalizedMut)) return;
 
       // 檢查是否已在資料庫或先前點位中收錄
       const canonicalKey = `${gene}::${reference || 'Unknown'}::${normalizedMut.toUpperCase()}`;
-      if (seenCanonicalKeys.has(canonicalKey)) return;
-      seenCanonicalKeys.add(canonicalKey);
+      if (columnsByCanonicalKey.has(canonicalKey)) return;
 
-      columns.push({
+      const column = {
         id: canonicalKey,
         rawKey: canonicalKey,
+        rawKeys: [canonicalKey],
         canonicalKey,
         gene,
         geneLabel: reference ? `${gene} (${reference})` : gene,
         reference,
         mutation: normalizedMut,
         orderValue: getMutationOrderValue(normalizedMut),
-      });
+      };
+      columns.push(column);
+      columnsByCanonicalKey.set(canonicalKey, column);
     });
   });
 
@@ -1274,12 +1304,12 @@ function App() {
     const map = new Map();
 
     dbMutationKeys.forEach((key) => {
-      const { gene, mutation, reference } = parseMutationHeader(key);
+      const { gene, mutation: parsedMutation, reference } = parseMutationHeader(key);
       if (gene === 'Cyp51A' && reference) {
+        const mutation = normalizeSupportedTandemRepeat(parsedMutation) || parsedMutation;
+        if (isUnsupportedTandemRepeat(parsedMutation)) return;
         if (!map.has(reference)) map.set(reference, new Set());
-        if (!isTR34(mutation)) {
-          map.get(reference).add(mutation);
-        }
+        map.get(reference).add(mutation);
       }
     });
 
@@ -1287,11 +1317,13 @@ function App() {
       if (normalizeGeneName(r.gene) === 'Cyp51A' && r.reference) {
         const ref = r.reference.trim();
         if (!map.has(ref)) map.set(ref, new Set());
-        (r.mutationSites || []).forEach((m) => {
-          const norm = normalizeMutation(m);
-          if (norm && !isTR34(norm)) {
-            map.get(ref).add(norm);
-          }
+        const mutations = [
+          ...(r.mutationSites || []),
+          ...getTandemRepeatsFromCombination(r.mutationCombination),
+        ];
+        mutations.forEach((m) => {
+          const norm = normalizeSupportedTandemRepeat(m) || normalizeMutation(m);
+          if (norm && !isUnsupportedTandemRepeat(norm)) map.get(ref).add(norm);
         });
       }
     });
@@ -1414,8 +1446,13 @@ function App() {
       if (!map[record.sampleName]) {
         map[record.sampleName] = new Map();
       }
-      (record.mutationSites || []).forEach((mutation) => {
-        const normMut = normalizeMutation(mutation);
+      const mutations = [
+        ...(record.mutationSites || []),
+        ...getTandemRepeatsFromCombination(record.mutationCombination),
+      ];
+      mutations.forEach((mutation) => {
+        const normMut = normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation);
+        if (isUnsupportedTandemRepeat(normMut)) return;
         map[record.sampleName].set(`${g}::${ref}::${normMut}`, record.resistantDrugs || []);
         map[record.sampleName].set(`${g}::${normMut}`, record.resistantDrugs || []);
         map[record.sampleName].set(normMut, record.resistantDrugs || []);
@@ -1519,8 +1556,9 @@ function App() {
       const cypMutations = [];
       (r.mutations || new Set()).forEach((rawMut) => {
         const parsed = parseMutationHeader(rawMut);
-        if (parsed.gene === 'Cyp51A' && !isTR34(parsed.mutation)) {
-          cypMutations.push(parsed.mutation);
+        const tandemRepeat = normalizeSupportedTandemRepeat(parsed.mutation);
+        if (parsed.gene === 'Cyp51A' && !isUnsupportedTandemRepeat(parsed.mutation)) {
+          cypMutations.push(tandemRepeat || parsed.mutation);
         }
       });
       // 依位點數字排序
@@ -1598,7 +1636,7 @@ function App() {
       const resistantDrugs = sampleMutations.get(fullKey) || sampleMutations.get(geneKey) || sampleMutations.get(column.mutation) || [];
       return resistantDrugs.length > 0 ? '#ef4444' : hasMutation ? '#f59e0b' : '#10b981';
     }
-    const hasMutation = row.mutations ? (row.mutations.has(column.id) || row.mutations.has(column.rawKey) || row.mutations.has(column.mutation)) : false;
+    const hasMutation = rowHasMutationColumn(row, column);
     return hasMutation ? '#ef4444' : '#10b981';
   }, [sampleMutationMap]);
 
@@ -1614,7 +1652,7 @@ function App() {
         statusText: isResistant ? `具抗藥性 (藥物: ${resistantDrugs.join(', ')})` : hasMutation ? '有突變 (未標示抗藥性)' : '未檢測到突變',
       };
     }
-    const hasMutation = row.mutations ? (row.mutations.has(column.id) || row.mutations.has(column.rawKey) || row.mutations.has(column.mutation)) : false;
+    const hasMutation = rowHasMutationColumn(row, column);
     return {
       statusText: hasMutation ? '資料庫標記具突變/耐藥' : '未檢測到突變',
     };
@@ -1903,7 +1941,7 @@ function App() {
                   <div>
                     <h3 className="text-xl font-black text-gray-800">抗藥圖譜（Cyp51A 突變）</h3>
                     <p className="text-sm text-gray-500">
-                      整合本次樣本與最新資料庫矩陣（版本：{detectedMatrixDate}）｜依點位編號數字嚴格排序｜TR34 點位不單獨顯示
+                      整合本次樣本與最新資料庫矩陣（版本：{detectedMatrixDate}）｜依點位編號數字嚴格排序｜串聯重複僅顯示 TR34/TR46
                     </p>
                   </div>
                   <div className="flex items-center gap-4 text-xs font-semibold text-gray-600">
@@ -1953,7 +1991,7 @@ function App() {
                   <div className="p-4 bg-white border border-indigo-200 rounded-2xl shadow-sm text-xs space-y-4">
                     <div className="flex items-center justify-between border-b pb-2">
                       <h4 className="font-black text-gray-800 text-sm">Cyp51A 各參考序列（Reference）收錄突變位點明細</h4>
-                      <span className="text-gray-500">共收錄 {cyp51aRefDetails.length} 個不同參考序列（TR34 已過濾不列入計算）</span>
+                      <span className="text-gray-500">共收錄 {cyp51aRefDetails.length} 個不同參考序列（僅納入 TR34/TR46 串聯重複）</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {cyp51aRefDetails.map((item) => (
