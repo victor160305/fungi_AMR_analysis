@@ -127,6 +127,11 @@ const parseCSV = (text) => {
 };
 
 const normalizeMutation = (value) => (value || '').trim();
+const formatMutationDisplay = (value) => (
+  typeof value === 'string'
+    ? value.replace(/\b([ACDEFGHIKLMNPQRSTVWY]\d+)-(?![A-Za-z0-9])/gi, '$1del')
+    : value
+);
 
 // 判斷是否為 TR34
 const isTR34 = (mutation) => {
@@ -764,7 +769,7 @@ const CanvasHeatmap = ({
       ctx.save();
       ctx.translate(x + CELL_W / 2 + 3, COL_HEADER_H - 8);
       ctx.rotate(-Math.PI / 2);
-      const text = col.mutation || col.label || col.id;
+      const text = formatMutationDisplay(col.mutation || col.label || col.id);
       ctx.fillText(text, 0, 0, mutationTierH - 12);
       ctx.restore();
     }
@@ -999,7 +1004,7 @@ const CanvasHeatmap = ({
             {hoveredCell.col.geneLabel && (
               <div>基因：<strong className="text-indigo-300">{hoveredCell.col.geneLabel}</strong></div>
             )}
-            <div>位點 / 藥物：<strong className="text-amber-300">{hoveredCell.col.mutation || hoveredCell.col.label}</strong></div>
+            <div>位點 / 藥物：<strong className="text-amber-300">{formatMutationDisplay(hoveredCell.col.mutation || hoveredCell.col.label)}</strong></div>
             {hoveredCell.col.reference && (
               <div>參考序列：<span className="text-gray-300">{hoveredCell.col.reference}</span></div>
             )}
@@ -1765,8 +1770,8 @@ function App() {
                           <tr key={`${record.sampleName}-${record.gene}-${record.reference}-${record.mutationCombination}-${index}`} className="align-top even:bg-gray-50/60">
                             <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-800">{record.gene || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 font-mono text-gray-700">{record.reference || '—'}</td>
-                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{record.mutationCombination || 'None'}</td>
-                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.mutationSite || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{formatMutationDisplay(record.mutationCombination) || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(record.mutationSite) || 'None'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
                               {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
                             </td>
@@ -1799,7 +1804,7 @@ function App() {
                             <tr key={`${record.gene}-${record.reference}-${index}`} className="align-top even:bg-gray-50/60">
                               <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-800">{record.gene || '—'}</td>
                               <td className="border-b border-gray-100 px-3 py-3 font-mono text-gray-700">{record.reference || '—'}</td>
-                              <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.mutationSite || 'None'}</td>
+                              <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(record.mutationSite) || 'None'}</td>
                               <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.confidenceScore ?? '—'}</td>
                               <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
                                 {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
@@ -1885,7 +1890,7 @@ function App() {
                           <div className="max-h-48 overflow-y-auto pr-1 text-[11px] leading-relaxed text-gray-600 font-mono flex flex-wrap gap-1">
                             {item.mutations.map((m) => (
                               <span key={m} className="inline-block bg-white border border-gray-200 px-1 py-0.5 rounded text-[10px]">
-                                {m}
+                                {formatMutationDisplay(m)}
                               </span>
                             ))}
                           </div>
@@ -2036,7 +2041,7 @@ function App() {
                             </td>
                             <td className="border-b border-gray-100 px-3 py-3 text-xs font-mono">
                               <span className={sample.hasResistantMutation ? 'font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200' : 'text-gray-500'}>
-                                {sample.mutations}
+                                {formatMutationDisplay(sample.mutations)}
                               </span>
                             </td>
                             <td className="border-b border-gray-100 px-3 py-3 text-xs">
