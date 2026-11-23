@@ -703,7 +703,7 @@
                                   "sampleName":  "A44_assembly",
                                   "gene":  "Cyp51A",
                                   "reference":  "Q9P8R0",
-                                  "mutationCombination":  "L98H,TR34(x3)",
+                                  "mutationCombination":  "L98H,TR34",
                                   "mutationSite":  "L98H",
                                   "mutationSites":  [
                                                         "L98H"
