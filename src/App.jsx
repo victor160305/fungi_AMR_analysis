@@ -228,6 +228,17 @@ const getTandemRepeatsFromCombination = (mutationCombination) => (
   )]
 );
 
+const getMutationSiteDisplay = (record) => {
+  const mutationSites = Array.isArray(record.mutationSites)
+    ? record.mutationSites
+    : (record.mutationSite || '').split(/[,，、;；]/).map((mutation) => mutation.trim()).filter(Boolean);
+  const normalizedSites = mutationSites
+    .map((mutation) => normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation))
+    .filter((mutation) => mutation && !isUnsupportedTandemRepeat(mutation));
+  return [...new Set([...normalizedSites, ...getTandemRepeatsFromCombination(record.mutationCombination)])]
+    .join(', ');
+};
+
 const rowHasMutationColumn = (row, column) => {
   if (!row.mutations) return false;
   return [column.id, column.rawKey, ...(column.rawKeys || []), column.mutation]
@@ -1886,7 +1897,7 @@ function App() {
                             <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-800">{record.gene || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 font-mono text-gray-700">{record.reference || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{formatMutationDisplay(record.mutationCombination) || 'None'}</td>
-                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(record.mutationSite) || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(getMutationSiteDisplay(record)) || 'None'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
                               {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
                             </td>
