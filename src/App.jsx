@@ -210,10 +210,28 @@ const formatMutationDisplay = (value) => {
   return formattedParts.join('');
 };
 
-const normalizeSupportedTandemRepeat = (mutation) => {
-  const match = normalizeMutation(mutation).match(/^TR(34|46)(?:\(x\d+\))?$/i);
-  return match ? `TR${match[1]}` : null;
+const TR_REPEAT_COLORS = ['#0ea5e9', '#8b5cf6', '#d946ef'];
+
+const parseTandemRepeat = (mutation) => {
+  const match = normalizeMutation(mutation).match(/^TR(\d+)(?:\(x(\d+)\))?$/i);
+  if (!match) return null;
+  const count = Number(match[2] || 1);
+  if (!Number.isSafeInteger(count) || count < 1) return null;
+  return {
+    type: `TR${match[1]}`,
+    count,
+    label: `TR${match[1]}(X${count})`,
+  };
 };
+
+const parseSupportedTandemRepeat = (mutation) => {
+  const tandemRepeat = parseTandemRepeat(mutation);
+  return tandemRepeat && ['TR34', 'TR46'].includes(tandemRepeat.type) ? tandemRepeat : null;
+};
+
+const normalizeSupportedTandemRepeat = (mutation) => (
+  parseSupportedTandemRepeat(mutation)?.label || null
+);
 
 const isUnsupportedTandemRepeat = (mutation) => (
   /^TR/i.test(normalizeMutation(mutation)) && !normalizeSupportedTandemRepeat(mutation)
@@ -223,9 +241,20 @@ const getTandemRepeatsFromCombination = (mutationCombination) => (
   [...new Set(
     (mutationCombination || '')
       .split(/[,，、;；\s]+/)
-      .map(normalizeSupportedTandemRepeat)
+      .map((mutation) => parseTandemRepeat(mutation)?.label)
       .filter(Boolean)
   )]
+);
+
+const getMutationCombinationDisplay = (mutationCombination) => (
+  (mutationCombination || '')
+    .split(/[,，、;；\s]+/)
+    .filter((mutation) => mutation && !parseTandemRepeat(mutation))
+    .join(', ')
+);
+
+const getTandemRepeatTypeDisplay = (record) => (
+  getTandemRepeatsFromCombination(record.mutationCombination).join(', ')
 );
 
 const getMutationSiteDisplay = (record) => {
@@ -234,9 +263,8 @@ const getMutationSiteDisplay = (record) => {
     : (record.mutationSite || '').split(/[,，、;；]/).map((mutation) => mutation.trim()).filter(Boolean);
   const normalizedSites = mutationSites
     .map((mutation) => normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation))
-    .filter((mutation) => mutation && !isUnsupportedTandemRepeat(mutation));
-  return [...new Set([...normalizedSites, ...getTandemRepeatsFromCombination(record.mutationCombination)])]
-    .join(', ');
+    .filter((mutation) => mutation && !parseTandemRepeat(mutation) && !isUnsupportedTandemRepeat(mutation));
+  return [...new Set(normalizedSites)].join(', ');
 };
 
 const rowHasMutationColumn = (row, column) => {
@@ -350,7 +378,8 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       return;
     }
 
-    const mutation = normalizeSupportedTandemRepeat(parsedMutation) || parsedMutation;
+    const tandemRepeat = parseSupportedTandemRepeat(parsedMutation);
+    const mutation = tandemRepeat?.label || parsedMutation;
     // 統一規範化鍵名：例如 "Cyp51A::Q9P8R0::L98H"
     const canonicalKey = `${gene}::${reference || 'Unknown'}::${mutation.toUpperCase()}`;
     const existingColumn = columnsByCanonicalKey.get(canonicalKey);
@@ -368,6 +397,8 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       geneLabel: reference ? `${gene} (${reference})` : gene,
       reference,
       mutation,
+      tandemRepeatType: tandemRepeat?.type,
+      tandemRepeatCount: tandemRepeat?.count,
       orderValue: getMutationOrderValue(mutation),
     };
     columns.push(column);
@@ -389,7 +420,8 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       ...getTandemRepeatsFromCombination(record.mutationCombination),
     ];
     recordMutations.forEach((mutation) => {
-      const normalizedMut = normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation);
+      const tandemRepeat = parseSupportedTandemRepeat(mutation);
+      const normalizedMut = tandemRepeat?.label || normalizeMutation(mutation);
       if (!normalizedMut || isUnsupportedTandemRepeat(normalizedMut)) return;
 
       // 檢查是否已在資料庫或先前點位中收錄
@@ -405,6 +437,8 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
         geneLabel: reference ? `${gene} (${reference})` : gene,
         reference,
         mutation: normalizedMut,
+        tandemRepeatType: tandemRepeat?.type,
+        tandemRepeatCount: tandemRepeat?.count,
         orderValue: getMutationOrderValue(normalizedMut),
       };
       columns.push(column);
@@ -414,6 +448,13 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
 
   // 嚴格依「點位數字」升冪排序，若數字相同則按字母排序
   return columns.sort((a, b) => {
+    if (a.tandemRepeatCount || b.tandemRepeatCount) {
+      if (!a.tandemRepeatCount) return 1;
+      if (!b.tandemRepeatCount) return -1;
+      const typeDiff = Number(a.tandemRepeatType.slice(2)) - Number(b.tandemRepeatType.slice(2));
+      if (typeDiff !== 0) return typeDiff;
+      return a.tandemRepeatCount - b.tandemRepeatCount;
+    }
     if (a.orderValue !== b.orderValue) {
       return a.orderValue - b.orderValue;
     }
@@ -1639,6 +1680,21 @@ function App() {
   }, [biosamples]);
 
   const getMutationCellColor = useCallback((row, column) => {
+    if (column.tandemRepeatCount) {
+      let hasTandemRepeat = false;
+      if (row.isQuery) {
+        const sampleMutations = sampleMutationMap[row.label] || new Map();
+        const fullKey = `${column.gene}::${column.reference}::${column.mutation}`;
+        const geneKey = `${column.gene}::${column.mutation}`;
+        hasTandemRepeat = sampleMutations.has(fullKey) || sampleMutations.has(geneKey) || sampleMutations.has(column.mutation);
+      } else {
+        hasTandemRepeat = rowHasMutationColumn(row, column);
+      }
+      return hasTandemRepeat
+        ? TR_REPEAT_COLORS[Math.min(column.tandemRepeatCount, TR_REPEAT_COLORS.length) - 1]
+        : '#10b981';
+    }
+
     if (row.isQuery) {
       const sampleMutations = sampleMutationMap[row.label] || new Map();
       const fullKey = `${column.gene}::${column.reference}::${column.mutation}`;
@@ -1881,12 +1937,13 @@ function App() {
                     </div>
                   </div>
                   <div className="overflow-x-auto border-y border-gray-200">
-                    <table className="w-full min-w-[1000px] border-collapse text-sm">
+                    <table className="w-full min-w-[1100px] border-collapse text-sm">
                       <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-600">
                         <tr>
                           <th className="border-b border-gray-200 px-3 py-3">Gene_Name</th>
                           <th className="border-b border-gray-200 px-3 py-3">Reference_Sequence</th>
                           <th className="border-b border-gray-200 px-3 py-3">Mutation_Combination</th>
+                          <th className="border-b border-gray-200 px-3 py-3">TR_TYPE</th>
                           <th className="border-b border-gray-200 px-3 py-3">Mutation_Site</th>
                           <th className="border-b border-gray-200 px-3 py-3">Resistant_Drugs</th>
                         </tr>
@@ -1896,7 +1953,8 @@ function App() {
                           <tr key={`${record.sampleName}-${record.gene}-${record.reference}-${record.mutationCombination}-${index}`} className="align-top even:bg-gray-50/60">
                             <td className="border-b border-gray-100 px-3 py-3 font-semibold text-gray-800">{record.gene || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 font-mono text-gray-700">{record.reference || '—'}</td>
-                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{formatMutationDisplay(record.mutationCombination) || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{formatMutationDisplay(getMutationCombinationDisplay(record.mutationCombination)) || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 font-semibold text-violet-700">{getTandemRepeatTypeDisplay(record) || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(getMutationSiteDisplay(record)) || 'None'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
                               {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
@@ -1955,10 +2013,21 @@ function App() {
                       整合本次樣本與最新資料庫矩陣（版本：{detectedMatrixDate}）｜依點位編號數字嚴格排序｜串聯重複僅顯示 TR34/TR46
                     </p>
                   </div>
-                  <div className="flex items-center gap-4 text-xs font-semibold text-gray-600">
-                    <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-500 inline-block"></span> 紅色 = 檢測到突變/抗藥</span>
-                    <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-400 inline-block"></span> 黃色 = 有突變未標抗藥</span>
-                    <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-emerald-500 inline-block"></span> 綠色 = 未檢出</span>
+                  <div className="flex items-center gap-3 flex-wrap text-xs font-semibold text-gray-600">
+                    <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                      <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-500 inline-block"></span> 紅色 = 檢測到突變/抗藥</span>
+                      <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-400 inline-block"></span> 黃色 = 有突變未標抗藥</span>
+                      <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-emerald-500 inline-block"></span> 綠色 = 未檢出</span>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-lg border-2 border-violet-300 bg-violet-50 px-3 py-2">
+                      <span className="font-black text-violet-900">TR 重複次數</span>
+                      {[1, 2, 3].map((repeatCount) => (
+                        <span key={repeatCount} className="inline-flex items-center gap-1.5">
+                          <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: TR_REPEAT_COLORS[repeatCount - 1] }}></span>
+                          X{repeatCount === 3 ? '3+' : repeatCount}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
