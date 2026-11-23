@@ -127,11 +127,56 @@ const parseCSV = (text) => {
 };
 
 const normalizeMutation = (value) => (value || '').trim();
-const formatMutationDisplay = (value) => (
-  typeof value === 'string'
-    ? value.replace(/\b([ACDEFGHIKLMNPQRSTVWY]\d+)-(?![A-Za-z0-9])/gi, '$1del')
-    : value
-);
+const formatMutationDisplay = (value) => {
+  if (typeof value !== 'string') return value;
+
+  const parts = value.split(/([,，、;；])/);
+  const formattedParts = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    if (i % 2 === 1) {
+      formattedParts.push(parts[i]);
+      continue;
+    }
+
+    const insertionMatch = parts[i].trim().match(/^-(\d+)([A-Za-z]+)$/);
+    if (insertionMatch) {
+      const leadingWhitespace = parts[i].match(/^\s*/)[0];
+      const start = Number(insertionMatch[1]);
+      let end = start;
+      let insertedSequence = insertionMatch[2];
+      let lastTokenIndex = i;
+
+      while (lastTokenIndex + 2 < parts.length) {
+        const nextTokenIndex = lastTokenIndex + 2;
+        const nextInsertion = parts[nextTokenIndex].trim().match(/^-(\d+)([A-Za-z]+)$/);
+        if (
+          !nextInsertion ||
+          Number(nextInsertion[1]) !== end + 1
+        ) {
+          break;
+        }
+
+        end = Number(nextInsertion[1]);
+        insertedSequence += nextInsertion[2];
+        lastTokenIndex = nextTokenIndex;
+      }
+
+      formattedParts.push(
+        `${leadingWhitespace}${start}${end === start ? '' : `_${end}`} ins ${insertedSequence}`
+      );
+      i = lastTokenIndex;
+      continue;
+    }
+
+    formattedParts.push(
+      parts[i]
+        .replace(/\b([A-Za-z]\d+)-(?![A-Za-z0-9])/g, '$1del')
+        .replace(/\b(\d+)\s*[~～]\s*(\d+)(?:\s*(?:-|del))?(?![A-Za-z0-9])/gi, '$1_$2del')
+    );
+  }
+
+  return formattedParts.join('');
+};
 
 // 判斷是否為 TR34
 const isTR34 = (mutation) => {
