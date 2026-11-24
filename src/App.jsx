@@ -210,39 +210,28 @@ const formatMutationDisplay = (value) => {
   return formattedParts.join('');
 };
 
-const TR_REPEAT_COLORS = ['#0ea5e9', '#8b5cf6', '#d946ef'];
-const SUPPORTED_TANDEM_REPEAT_TYPES = ['TR34', 'TR40', 'TR46', 'TR50'];
-
 const parseTandemRepeat = (mutation) => {
-  const match = normalizeMutation(mutation).match(/^TR(\d+)(?:\(x(\d+)\))?$/i);
+  const match = normalizeMutation(mutation).match(/^TR(\d*)(?:\(x(\d+)\))?$/i);
   if (!match) return null;
-  const count = Number(match[2] || 1);
-  if (!Number.isSafeInteger(count) || count < 1) return null;
+  if (match[2] && (!Number.isSafeInteger(Number(match[2])) || Number(match[2]) < 1)) return null;
   return {
     type: `TR${match[1]}`,
-    count,
-    label: `TR${match[1]}(X${count})`,
   };
 };
 
-const parseSupportedTandemRepeat = (mutation) => {
-  const tandemRepeat = parseTandemRepeat(mutation);
-  return tandemRepeat && SUPPORTED_TANDEM_REPEAT_TYPES.includes(tandemRepeat.type) ? tandemRepeat : null;
-};
-
-const normalizeSupportedTandemRepeat = (mutation) => (
-  parseSupportedTandemRepeat(mutation)?.label || null
+const normalizeTandemRepeatType = (mutation) => (
+  parseTandemRepeat(mutation)?.type || null
 );
 
 const isUnsupportedTandemRepeat = (mutation) => (
-  /^TR/i.test(normalizeMutation(mutation)) && !normalizeSupportedTandemRepeat(mutation)
+  /^TR/i.test(normalizeMutation(mutation)) && !normalizeTandemRepeatType(mutation)
 );
 
 const getTandemRepeatsFromCombination = (mutationCombination) => (
   [...new Set(
     (mutationCombination || '')
       .split(/[,，、;；\s]+/)
-      .map((mutation) => parseSupportedTandemRepeat(mutation)?.label)
+      .map((mutation) => normalizeTandemRepeatType(mutation))
       .filter(Boolean)
   )]
 );
@@ -263,7 +252,7 @@ const getMutationSiteDisplay = (record) => {
     ? record.mutationSites
     : (record.mutationSite || '').split(/[,，、;；]/).map((mutation) => mutation.trim()).filter(Boolean);
   const normalizedSites = mutationSites
-    .map((mutation) => normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation))
+    .map((mutation) => normalizeTandemRepeatType(mutation) || normalizeMutation(mutation))
     .filter((mutation) => mutation && !parseTandemRepeat(mutation) && !isUnsupportedTandemRepeat(mutation));
   return [...new Set(normalizedSites)].join(', ');
 };
@@ -274,16 +263,13 @@ const rowHasMutationColumn = (row, column) => {
     .some((key) => row.mutations.has(key));
 };
 
-const getTandemRepeatCountForRow = (row, column, sampleTandemRepeats) => {
-  if (!column.tandemRepeatType) return null;
+const rowHasTandemRepeat = (row, column, sampleTandemRepeats) => {
+  if (!column.tandemRepeatType) return false;
   if (row.isQuery) {
-    return sampleTandemRepeats.get(row.label)?.get(column.tandemRepeatType) || null;
+    return sampleTandemRepeats.get(row.label)?.has(column.tandemRepeatType) || false;
   }
 
-  const counts = Object.entries(column.rawKeysByRepeatCount || {})
-    .filter(([, rawKeys]) => rawKeys.some((key) => row.mutations?.has(key)))
-    .map(([count]) => Number(count));
-  return counts.length ? Math.max(...counts) : null;
+  return rowHasMutationColumn(row, column);
 };
 
 // 取出突變中的點位數字進行精確排序
@@ -391,18 +377,12 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       return;
     }
 
-    const tandemRepeat = parseSupportedTandemRepeat(parsedMutation);
+    const tandemRepeat = parseTandemRepeat(parsedMutation);
     const mutation = tandemRepeat?.type || parsedMutation;
     const canonicalKey = `${gene}::${reference || 'Unknown'}::${mutation.toUpperCase()}`;
     const existingColumn = columnsByCanonicalKey.get(canonicalKey);
     if (existingColumn) {
       existingColumn.rawKeys.push(rawKey);
-      if (tandemRepeat) {
-        if (!existingColumn.rawKeysByRepeatCount[tandemRepeat.count]) {
-          existingColumn.rawKeysByRepeatCount[tandemRepeat.count] = [];
-        }
-        existingColumn.rawKeysByRepeatCount[tandemRepeat.count].push(rawKey);
-      }
       return;
     }
 
@@ -416,7 +396,6 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       reference,
       mutation,
       tandemRepeatType: tandemRepeat?.type,
-      rawKeysByRepeatCount: tandemRepeat ? { [tandemRepeat.count]: [rawKey] } : {},
       orderValue: getMutationOrderValue(mutation),
     };
     columns.push(column);
@@ -438,7 +417,7 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
       ...getTandemRepeatsFromCombination(record.mutationCombination),
     ];
     recordMutations.forEach((mutation) => {
-      const tandemRepeat = parseSupportedTandemRepeat(mutation);
+      const tandemRepeat = parseTandemRepeat(mutation);
       const normalizedMut = tandemRepeat?.type || normalizeMutation(mutation);
       if (!normalizedMut || isUnsupportedTandemRepeat(normalizedMut)) return;
 
@@ -456,7 +435,6 @@ const buildMutationColumns = (reportRecords = [], dbMutationKeys = [], targetRef
         reference,
         mutation: normalizedMut,
         tandemRepeatType: tandemRepeat?.type,
-        rawKeysByRepeatCount: {},
         orderValue: getMutationOrderValue(normalizedMut),
       };
       columns.push(column);
@@ -1375,7 +1353,7 @@ function App() {
     dbMutationKeys.forEach((key) => {
       const { gene, mutation: parsedMutation, reference } = parseMutationHeader(key);
       if (gene === 'Cyp51A' && reference) {
-        const mutation = normalizeSupportedTandemRepeat(parsedMutation) || parsedMutation;
+        const mutation = normalizeTandemRepeatType(parsedMutation) || parsedMutation;
         if (isUnsupportedTandemRepeat(parsedMutation)) return;
         if (!map.has(reference)) map.set(reference, new Set());
         map.get(reference).add(mutation);
@@ -1391,7 +1369,7 @@ function App() {
           ...getTandemRepeatsFromCombination(r.mutationCombination),
         ];
         mutations.forEach((m) => {
-          const norm = normalizeSupportedTandemRepeat(m) || normalizeMutation(m);
+          const norm = normalizeTandemRepeatType(m) || normalizeMutation(m);
           if (norm && !isUnsupportedTandemRepeat(norm)) map.get(ref).add(norm);
         });
       }
@@ -1520,7 +1498,7 @@ function App() {
         ...getTandemRepeatsFromCombination(record.mutationCombination),
       ];
       mutations.forEach((mutation) => {
-        const normMut = normalizeSupportedTandemRepeat(mutation) || normalizeMutation(mutation);
+        const normMut = normalizeTandemRepeatType(mutation) || normalizeMutation(mutation);
         if (isUnsupportedTandemRepeat(normMut)) return;
         map[record.sampleName].set(`${g}::${ref}::${normMut}`, record.resistantDrugs || []);
         map[record.sampleName].set(`${g}::${normMut}`, record.resistantDrugs || []);
@@ -1534,12 +1512,9 @@ function App() {
     const map = new Map();
     (searchData?.resistanceRecords || []).forEach((record) => {
       if (!record.sampleName || normalizeGeneName(record.gene) !== 'Cyp51A') return;
-      const sampleRepeats = map.get(record.sampleName) || new Map();
-      getTandemRepeatsFromCombination(record.mutationCombination).forEach((label) => {
-        const tandemRepeat = parseSupportedTandemRepeat(label);
-        if (!tandemRepeat) return;
-        const existingCount = sampleRepeats.get(tandemRepeat.type) || 0;
-        sampleRepeats.set(tandemRepeat.type, Math.max(existingCount, tandemRepeat.count));
+      const sampleRepeats = map.get(record.sampleName) || new Set();
+      getTandemRepeatsFromCombination(record.mutationCombination).forEach((type) => {
+        sampleRepeats.add(type);
       });
       map.set(record.sampleName, sampleRepeats);
     });
@@ -1641,7 +1616,7 @@ function App() {
       const cypMutations = [];
       (r.mutations || new Set()).forEach((rawMut) => {
         const parsed = parseMutationHeader(rawMut);
-        const tandemRepeat = normalizeSupportedTandemRepeat(parsed.mutation);
+        const tandemRepeat = normalizeTandemRepeatType(parsed.mutation);
         if (parsed.gene === 'Cyp51A' && !isUnsupportedTandemRepeat(parsed.mutation)) {
           cypMutations.push(tandemRepeat || parsed.mutation);
         }
@@ -1714,10 +1689,7 @@ function App() {
 
   const getMutationCellColor = useCallback((row, column) => {
     if (column.tandemRepeatType) {
-      const repeatCount = getTandemRepeatCountForRow(row, column, sampleTandemRepeats);
-      return repeatCount
-        ? TR_REPEAT_COLORS[Math.min(repeatCount, TR_REPEAT_COLORS.length) - 1]
-        : '#10b981';
+      return rowHasTandemRepeat(row, column, sampleTandemRepeats) ? '#ef4444' : '#10b981';
     }
 
     if (row.isQuery) {
@@ -1734,11 +1706,11 @@ function App() {
 
   const getMutationCellInfo = useCallback((row, column) => {
     if (column.tandemRepeatType) {
-      const repeatCount = getTandemRepeatCountForRow(row, column, sampleTandemRepeats);
+      const hasTandemRepeat = rowHasTandemRepeat(row, column, sampleTandemRepeats);
       return {
-        statusText: repeatCount
-          ? `檢測到 ${column.tandemRepeatType}(X${repeatCount})`
-          : '未檢測到突變',
+        statusText: hasTandemRepeat
+          ? `檢測到 ${column.tandemRepeatType}`
+          : `未檢測到 ${column.tandemRepeatType}`,
       };
     }
 
@@ -2044,7 +2016,7 @@ function App() {
                   <div>
                     <h3 className="text-xl font-black text-gray-800">抗藥圖譜（Cyp51A 突變）</h3>
                     <p className="text-sm text-gray-500">
-                      整合本次樣本與最新資料庫矩陣（版本：{detectedMatrixDate}）｜依點位編號數字嚴格排序｜串聯重複顯示 TR34/TR40/TR46/TR50
+                      整合本次樣本與最新資料庫矩陣（版本：{detectedMatrixDate}）｜依所選 Reference 顯示資料庫收錄的全部 TR 類型｜紅色 = 有，綠色 = 無
                     </p>
                   </div>
                   <div className="flex items-center gap-3 flex-wrap text-xs font-semibold text-gray-600">
@@ -2052,15 +2024,6 @@ function App() {
                       <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-500 inline-block"></span> 紅色 = 檢測到突變/抗藥</span>
                       <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-400 inline-block"></span> 黃色 = 有突變未標抗藥</span>
                       <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded bg-emerald-500 inline-block"></span> 綠色 = 未檢出</span>
-                    </div>
-                    <div className="flex items-center gap-3 rounded-lg border-2 border-violet-300 bg-violet-50 px-3 py-2">
-                      <span className="font-black text-violet-900">TR 重複次數</span>
-                      {[1, 2, 3].map((repeatCount) => (
-                        <span key={repeatCount} className="inline-flex items-center gap-1.5">
-                          <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: TR_REPEAT_COLORS[repeatCount - 1] }}></span>
-                          X{repeatCount === 3 ? '3+' : repeatCount}
-                        </span>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -2105,7 +2068,7 @@ function App() {
                   <div className="p-4 bg-white border border-indigo-200 rounded-2xl shadow-sm text-xs space-y-4">
                     <div className="flex items-center justify-between border-b pb-2">
                       <h4 className="font-black text-gray-800 text-sm">Cyp51A 各參考序列（Reference）收錄突變位點明細</h4>
-                      <span className="text-gray-500">共收錄 {cyp51aRefDetails.length} 個不同參考序列（納入 TR34/TR40/TR46/TR50 串聯重複）</span>
+                      <span className="text-gray-500">共收錄 {cyp51aRefDetails.length} 個不同參考序列（納入資料庫中所有 TR 類型）</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {cyp51aRefDetails.map((item) => (
