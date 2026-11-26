@@ -748,6 +748,8 @@ const CanvasHeatmap = ({
   columns = [],
   rows = [],
   geneGroups = null,
+  countedColumnCount = columns.length,
+  columnCountLabel = '個標記點位',
   getCellColor,
   getCellInfo,
   onInteractionChange,
@@ -1093,7 +1095,7 @@ const CanvasHeatmap = ({
     <div className="relative flex flex-col w-full border border-gray-200 rounded-2xl bg-white overflow-hidden shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/90 px-4 py-2 text-xs">
         <span className="font-bold text-gray-700">
-          總量：{rows.length} 株 × {columns.length} 個標記點位
+          總量：{rows.length} 株 × {countedColumnCount} {columnCountLabel}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -1184,7 +1186,6 @@ const mutationGlobModules = import.meta.glob(
   { query: '?raw', import: 'default' }
 );
 
-const EXPECTED_DATABASE_MATRIX_STRAINS = 361;
 const PUBLIC_DATASET_STATS = { speciesCount: 1, sampleCount: 365 };
 const DEFAULT_SPECIES_OPTIONS = ['Aspergillus fumigatus'];
 
@@ -1437,14 +1438,6 @@ function App() {
   const antibioticColumns = useMemo(
     () => ANTIBIOTIC_LIST.map((drug) => ({ id: drug, label: drug, mutation: drug })),
     []
-  );
-
-  const renderDatabaseMatrixCountWarning = (matrixName, count) => (
-    !matrixLoading && detectedMatrixDate !== '自動偵測中...' && count !== EXPECTED_DATABASE_MATRIX_STRAINS ? (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-        {matrixName}目前載入 {count} 株資料，預期為 {EXPECTED_DATABASE_MATRIX_STRAINS} 株。來源 CSV 目前只有 {count} 筆菌株資料列；缺少第 {EXPECTED_DATABASE_MATRIX_STRAINS} 株的原始矩陣值，因此不會以推測資料補列。
-      </div>
-    ) : null
   );
 
   // 1. 總覽專用：僅保留 Cyp51A，並嚴格依 Reference_Sequence > Mutation_Combination > Resistant_Drugs 排序
@@ -2116,13 +2109,13 @@ function App() {
                   </div>
                 )}
 
-                {renderDatabaseMatrixCountWarning('抗藥基因熱圖資料庫', dbMutationRecords.length)}
                 {renderHeatmapToolbar(queryRows.length + dbMutationRecords.length, queryRows.length, dbMutationRecords.length)}
 
                 <CanvasHeatmap
                   columns={mutationColumns}
                   rows={combinedMutationRows}
                   geneGroups={geneGroups}
+                  countedColumnCount={mutationColumns.filter((column) => isCountedMutationMarker(column.mutation)).length}
                   getCellColor={getMutationCellColor}
                   getCellInfo={getMutationCellInfo}
                   onInteractionChange={setIsZoomAreaActive}
@@ -2152,13 +2145,13 @@ function App() {
                   </div>
                 )}
 
-                {renderDatabaseMatrixCountWarning('抗生素熱圖資料庫', dbAntibioticRecords.length)}
                 {renderHeatmapToolbar(queryRows.length + dbAntibioticRecords.length, queryRows.length, dbAntibioticRecords.length)}
 
                 <CanvasHeatmap
                   columns={antibioticColumns}
                   rows={combinedAntibioticRows}
                   geneGroups={null}
+                  columnCountLabel="種抗生素"
                   getCellColor={getAntibioticCellColor}
                   getCellInfo={getAntibioticCellInfo}
                   onInteractionChange={setIsZoomAreaActive}
