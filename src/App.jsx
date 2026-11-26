@@ -227,6 +227,10 @@ const isUnsupportedTandemRepeat = (mutation) => (
   /^TR/i.test(normalizeMutation(mutation)) && !normalizeTandemRepeatType(mutation)
 );
 
+const isCountedMutationMarker = (mutation) => (
+  !parseTandemRepeat(mutation) && !['DELETION', 'MULTIPLE'].includes(normalizeMutation(mutation).toUpperCase())
+);
+
 const getTandemRepeatsFromCombination = (mutationCombination) => (
   [...new Set(
     (mutationCombination || '')
@@ -1180,6 +1184,7 @@ const mutationGlobModules = import.meta.glob(
   { query: '?raw', import: 'default' }
 );
 
+const EXPECTED_DATABASE_MATRIX_STRAINS = 361;
 const PUBLIC_DATASET_STATS = { speciesCount: 1, sampleCount: 365 };
 const DEFAULT_SPECIES_OPTIONS = ['Aspergillus fumigatus'];
 
@@ -1349,6 +1354,7 @@ function App() {
   // 深入解析各個 Reference 的突變點位清單與數量統計
   const cyp51aRefDetails = useMemo(() => {
     const map = new Map();
+    const markerMap = new Map();
 
     dbMutationKeys.forEach((key) => {
       const { gene, mutation: parsedMutation, reference } = parseMutationHeader(key);
@@ -1357,6 +1363,10 @@ function App() {
         if (isUnsupportedTandemRepeat(parsedMutation)) return;
         if (!map.has(reference)) map.set(reference, new Set());
         map.get(reference).add(mutation);
+        if (isCountedMutationMarker(mutation)) {
+          if (!markerMap.has(reference)) markerMap.set(reference, new Set());
+          markerMap.get(reference).add(mutation);
+        }
       }
     });
 
@@ -1383,7 +1393,7 @@ function App() {
       });
       return {
         reference: ref,
-        count: list.length,
+        count: markerMap.get(ref)?.size || 0,
         mutations: list,
       };
     }).sort((a, b) => b.count - a.count);
@@ -1427,6 +1437,14 @@ function App() {
   const antibioticColumns = useMemo(
     () => ANTIBIOTIC_LIST.map((drug) => ({ id: drug, label: drug, mutation: drug })),
     []
+  );
+
+  const renderDatabaseMatrixCountWarning = (matrixName, count) => (
+    !matrixLoading && detectedMatrixDate !== '自動偵測中...' && count !== EXPECTED_DATABASE_MATRIX_STRAINS ? (
+      <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        {matrixName}目前載入 {count} 株資料，預期為 {EXPECTED_DATABASE_MATRIX_STRAINS} 株。來源 CSV 目前只有 {count} 筆菌株資料列；缺少第 {EXPECTED_DATABASE_MATRIX_STRAINS} 株的原始矩陣值，因此不會以推測資料補列。
+      </div>
+    ) : null
   );
 
   // 1. 總覽專用：僅保留 Cyp51A，並嚴格依 Reference_Sequence > Mutation_Combination > Resistant_Drugs 排序
@@ -2059,7 +2077,7 @@ function App() {
                       📊 {showRefStatsModal ? '收起各 Reference 點位清單' : '查看各 Reference 點位清單與數量'}
                     </button>
                     <span className="text-gray-500">
-                      目前顯示：<strong className="text-indigo-700">{selectedReference || '主要參考序列'}</strong>（共 {mutationColumns.length} 個位點）
+                      資料庫標記點位：<strong className="text-indigo-700">{cyp51aRefDetails.find((item) => item.reference === selectedReference)?.count || 0}</strong>（TR 另列、不計入）
                     </span>
                   </div>
                 </div>
@@ -2076,7 +2094,7 @@ function App() {
                           <div className="flex items-center justify-between mb-2 pb-1 border-b border-gray-200/80">
                             <span className="font-bold text-gray-800 text-xs font-mono">{item.reference}</span>
                             <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-black text-[11px]">
-                              {item.count} 個位點
+                              {item.count} 個標記點
                             </span>
                           </div>
                           <div className="max-h-48 overflow-y-auto pr-1 text-[11px] leading-relaxed text-gray-600 font-mono flex flex-wrap gap-1">
@@ -2098,6 +2116,7 @@ function App() {
                   </div>
                 )}
 
+                {renderDatabaseMatrixCountWarning('抗藥基因熱圖資料庫', dbMutationRecords.length)}
                 {renderHeatmapToolbar(queryRows.length + dbMutationRecords.length, queryRows.length, dbMutationRecords.length)}
 
                 <CanvasHeatmap
@@ -2133,6 +2152,7 @@ function App() {
                   </div>
                 )}
 
+                {renderDatabaseMatrixCountWarning('抗生素熱圖資料庫', dbAntibioticRecords.length)}
                 {renderHeatmapToolbar(queryRows.length + dbAntibioticRecords.length, queryRows.length, dbAntibioticRecords.length)}
 
                 <CanvasHeatmap
