@@ -25,6 +25,11 @@ const RESULT_TABS = [
   { key: 'map', label: '地圖分布' },
 ];
 
+const isReferenceStrain = (biosample) => (
+  [biosample.strain, biosample.isolate, biosample.AssemblyName, biosample.Organism]
+    .some((value) => /(?:^|[^a-z0-9])(CEA10|AF293|A1163)(?:$|[^a-z0-9])/i.test(value || ''))
+);
+
 const RAW_ANTIBIOTIC_LIST = [
   'Itraconazole',
   'Posaconazole',
@@ -1651,12 +1656,17 @@ function App() {
 
       const queryKey = strainId.toLowerCase().trim();
       const accessionKey = (item.AssemblyAccession || '').toLowerCase().trim();
+      const isReference = isReferenceStrain(item);
 
       // 比對抗藥性
-      const resistantDrugs = drugByStrainMap.get(queryKey) || drugByStrainMap.get(accessionKey) || new Set();
+      const resistantDrugs = isReference
+        ? new Set()
+        : drugByStrainMap.get(queryKey) || drugByStrainMap.get(accessionKey) || new Set();
 
       // 比對 Cyp51A 突變
-      const mutations = mutationByStrainMap.get(queryKey) || mutationByStrainMap.get(accessionKey) || [];
+      const mutations = isReference
+        ? []
+        : mutationByStrainMap.get(queryKey) || mutationByStrainMap.get(accessionKey) || [];
 
       return {
         strainId,
@@ -1666,11 +1676,13 @@ function App() {
         location: location.replace(/\b(missing|not applicable|NA)\b/i, '地點未提供'),
         host: item.host && !/missing|not applicable|NA/i.test(item.host) ? item.host : '—',
         hostDisease: item.host_disease && !/missing|not applicable|NA/i.test(item.host_disease) ? item.host_disease : '—',
-        mutations: mutations.length > 0 ? mutations.join(', ') : '野生型 (WT) / 未檢出',
+        mutations: isReference ? '野生型 (WT)' : mutations.length > 0 ? mutations.join(', ') : '野生型 (WT) / 未檢出',
         hasResistantMutation: mutations.length > 0,
-        drugs: resistantDrugs.size > 0
-          ? [...resistantDrugs].map((d) => RAW_ANTIBIOTIC_LIST.find((a) => a.toLowerCase() === d) || d).join(', ')
-          : '敏感 / 未檢出抗藥性',
+        drugs: isReference
+          ? '野生型 (WT) / 未檢出抗藥性'
+          : resistantDrugs.size > 0
+            ? [...resistantDrugs].map((d) => RAW_ANTIBIOTIC_LIST.find((a) => a.toLowerCase() === d) || d).join(', ')
+            : '敏感 / 未檢出抗藥性',
         isResistant: resistantDrugs.size > 0,
       };
     });
@@ -1954,7 +1966,7 @@ function App() {
                     </div>
                   </div>
                   <div className="overflow-x-auto border-y border-gray-200">
-                    <table className="w-full min-w-[1100px] border-collapse text-sm">
+                    <table className="w-full min-w-[1200px] border-collapse text-sm">
                       <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-600">
                         <tr>
                           <th className="border-b border-gray-200 px-3 py-3">Gene_Name</th>
@@ -1962,6 +1974,7 @@ function App() {
                           <th className="border-b border-gray-200 px-3 py-3">Mutation_Combination</th>
                           <th className="border-b border-gray-200 px-3 py-3">TR_TYPE</th>
                           <th className="border-b border-gray-200 px-3 py-3">Mutation_Site</th>
+                          <th className="border-b border-gray-200 px-3 py-3">Confidence_Score</th>
                           <th className="border-b border-gray-200 px-3 py-3">Resistant_Drugs</th>
                         </tr>
                       </thead>
@@ -1973,6 +1986,7 @@ function App() {
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-semibold">{formatMutationDisplay(getMutationCombinationDisplay(record.mutationCombination)) || 'None'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 font-semibold text-violet-700">{getTandemRepeatTypeDisplay(record) || '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{formatMutationDisplay(getMutationSiteDisplay(record)) || 'None'}</td>
+                            <td className="border-b border-gray-100 px-3 py-3 text-gray-700">{record.confidenceScore ?? '—'}</td>
                             <td className="border-b border-gray-100 px-3 py-3 text-gray-700 font-medium text-red-600">
                               {Array.isArray(record.resistantDrugs) ? record.resistantDrugs.join(', ') : record.resistantDrugs || 'None'}
                             </td>

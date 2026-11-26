@@ -118,6 +118,8 @@ function readResistanceReports(folderPath) {
                         .split(',')
                         .map(value => value.trim())
                         .filter(value => value && !/^none$/i.test(value));
+                    const rawConfidenceScore = (row.Confidence_Score || row.confidence_score || '').trim();
+                    const parsedConfidenceScore = Number(rawConfidenceScore);
 
                     return {
                         sampleName,
@@ -127,6 +129,9 @@ function readResistanceReports(folderPath) {
                         mutationSite: (row.Mutation_Site || row.mutation_site || '').trim(),
                         mutationSites,
                         resistantDrugs,
+                        confidenceScore: rawConfidenceScore && Number.isFinite(parsedConfidenceScore)
+                            ? parsedConfidenceScore
+                            : null,
                         accessionNumbers,
                     };
                 })
