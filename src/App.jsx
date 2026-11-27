@@ -220,7 +220,7 @@ const parseTandemRepeat = (mutation) => {
   if (!match) return null;
   if (match[2] && (!Number.isSafeInteger(Number(match[2])) || Number(match[2]) < 1)) return null;
   return {
-    type: `TR${match[1]}`,
+    type: `TR${match[1] || '34'}`,
   };
 };
 
@@ -1629,19 +1629,21 @@ function App() {
     // 2. 建立突變矩陣索引（提取該菌株的 Cyp51A 點位）
     const mutationByStrainMap = new Map();
     dbMutationRecords.forEach((r) => {
-      const cypMutations = [];
+      const cypMutations = new Set();
       (r.mutations || new Set()).forEach((rawMut) => {
         const parsed = parseMutationHeader(rawMut);
         const tandemRepeat = normalizeTandemRepeatType(parsed.mutation);
         if (parsed.gene === 'Cyp51A' && !isUnsupportedTandemRepeat(parsed.mutation)) {
-          cypMutations.push(tandemRepeat || parsed.mutation);
+          cypMutations.add(tandemRepeat || parsed.mutation);
         }
       });
       // 依位點數字排序
-      cypMutations.sort((a, b) => getMutationOrderValue(a) - getMutationOrderValue(b));
+      const sortedCypMutations = [...cypMutations].sort(
+        (a, b) => getMutationOrderValue(a) - getMutationOrderValue(b)
+      );
 
-      if (r.id) mutationByStrainMap.set(r.id.toLowerCase().trim(), cypMutations);
-      if (r.label) mutationByStrainMap.set(r.label.toLowerCase().trim(), cypMutations);
+      if (r.id) mutationByStrainMap.set(r.id.toLowerCase().trim(), sortedCypMutations);
+      if (r.label) mutationByStrainMap.set(r.label.toLowerCase().trim(), sortedCypMutations);
     });
 
     // 3. 完整對接 BioSample 的每株菌株
